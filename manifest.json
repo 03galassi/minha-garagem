@@ -2,9 +2,30 @@
   "name": "Minha Garagem",
   "short_name": "Garagem",
   "description": "Controle de manutenção, quilometragem e gastos do carro e da moto.",
-  "start_url": "./",
+  "start_url": "./?app=v4",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fa",
   "theme_color": "#111827",
-  "lang": "pt-BR"
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
