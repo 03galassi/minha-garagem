@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Minha Garagem</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f4f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#17202a}
+.app{max-width:520px;margin:auto;min-height:100vh;background:#f7f8fa}
+header{background:#111827;color:white;padding:22px 18px 18px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:25px} header p{margin:5px 0 0;color:#cbd5e1;font-size:14px}
+main{padding:16px;padding-bottom:90px}
+.card{background:white;border-radius:18px;padding:17px;margin-bottom:14px;box-shadow:0 2px 10px #0000000d}
+.vehicle{display:flex;align-items:center;gap:14px}
+.icon{width:54px;height:54px;border-radius:15px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-size:29px}
+.vehicle h2{margin:0;font-size:18px}.muted{color:#6b7280;font-size:13px;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}
+.stat{background:#f8fafc;border-radius:13px;padding:11px}.stat b{display:block;font-size:17px;margin-top:3px}
+button{border:0;border-radius:13px;padding:13px 15px;font-size:15px;font-weight:600;cursor:pointer}
+.primary{background:#111827;color:white;width:100%;margin-top:10px}.secondary{background:#e9eef5;color:#17202a}
+.danger{background:#fee2e2;color:#991b1b}
+input,select,textarea{width:100%;padding:13px;border:1px solid #d6dbe3;border-radius:12px;font-size:15px;background:white}
+label{font-size:13px;font-weight:600;display:block;margin:10px 0 6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal{display:none;position:fixed;inset:0;background:#0008;z-index:20;padding:20px;align-items:flex-end}
+.modal.show{display:flex}.sheet{background:#fff;border-radius:22px 22px 0 0;padding:20px;width:100%;max-height:90vh;overflow:auto}
+.sheet h2{margin:0 0 10px}.close{float:right;background:#eef2f7}
+.history-item{border-top:1px solid #edf0f3;padding:13px 0}.history-item:first-child{border-top:0}
+.amount{font-weight:700}.tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:4px 8px;font-size:12px}
+.empty{text-align:center;color:#6b7280;padding:20px 5px}
+</style>
+
+<style>
+html{background:#f7f8fa}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);-webkit-text-size-adjust:100%}
+.app{width:100%;max-width:430px;min-height:100dvh}
+header{padding-top:calc(18px + env(safe-area-inset-top));}
+main{padding-left:14px;padding-right:14px}
+button{min-height:46px;-webkit-tap-highlight-color:transparent}
+input,select,textarea{min-height:46px;font-size:16px}
+.card{padding:16px;border-radius:18px}
+.grid{gap:9px}
+.stat{min-height:64px}
+.modal{padding:0;align-items:flex-end}
+.sheet{padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0;max-height:92dvh}
+.close{min-height:42px}
+.history-item button{min-height:42px}
+@media (min-width:700px){
+ .app{max-width:520px;box-shadow:0 0 35px #00000010}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>🚗 Minha Garagem</h1><p>Controle de manutenção do carro e da moto</p></header>
+<main id="app"></main>
+</div>
+
+<div class="modal" id="modal">
+<div class="sheet">
+<button class="close" onclick="closeModal()">Fechar</button>
+<h2 id="modalTitle">Adicionar veículo</h2>
+<div id="modalBody"></div>
+</div></div>
+
+<script>
+const KEY="minha_garagem_v1";
+let db=JSON.parse(localStorage.getItem(KEY)||'{"vehicles":[],"maintenance":[]}');
+
+function save(){localStorage.setItem(KEY,JSON.stringify(db));render()}
+function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+
+function addMonths(dateStr, months){
+ if(!dateStr) return '';
+ const d=new Date(dateStr+'T12:00:00');
+ d.setMonth(d.getMonth()+Number(months||0));
+ return d.toISOString().slice(0,10);
+}
+function brDate(dateStr){
+ if(!dateStr) return '—';
+ const [y,m,d]=dateStr.split('-');
+ return `${d}/${m}/${y}`;
+}
+function oilBox(v){
+ const interval=Number(v.oilInterval||10000), last=Number(v.lastOilKm||0), current=Number(v.km||0);
+ const months=Number(v.oilMonths||12), next=last+interval, remaining=next-current;
+ const nextDate=addMonths(v.lastOilDate,months);
+ const today=new Date().toISOString().slice(0,10);
+ const dateRemaining=nextDate?Math.ceil((new Date(nextDate+'T12:00:00')-new Date(today+'T12:00:00'))/86400000):999999;
+ let status, cls;
+ if(!last && !v.lastOilDate){status="CONFIGURAR";cls="background:#fff7ed;color:#9a3412"}
+ else if(remaining<=0 || dateRemaining<0){status="ÓLEO VENCIDO";cls="background:#fee2e2;color:#991b1b"}
+ else if(remaining<=1000 || dateRemaining<=30){status="PRÓXIMA TROCA";cls="background:#fef3c7;color:#92400e"}
+ else {status="OK";cls="background:#ecfdf5;color:#166534"}
+ return `<div style="margin-top:12px;padding:13px;border-radius:14px;${cls}">
+   <div style="display:flex;justify-content:space-between;align-items:center"><b>🛢️ Troca de óleo</b><span class="tag" style="${cls}">${status}</span></div>
+   <div class="grid" style="margin-top:8px">
+    <div class="stat">Próxima por KM<b>${last?next.toLocaleString('pt-BR')+' km':'—'}</b></div>
+    <div class="stat">Próxima por data<b>${nextDate?brDate(nextDate):'—'}</b></div>
+   </div>
+   ${last||v.lastOilDate?`<div style="margin-top:8px;font-size:13px">
+     Atual: <b>${current.toLocaleString('pt-BR')} km</b> · Intervalo: <b>${interval.toLocaleString('pt-BR')} km</b> ou <b>${months} meses</b>
+     ${remaining>=0?`<br>Faltam <b>${remaining.toLocaleString('pt-BR')} km</b>`:`<br>Passou <b>${Math.abs(remaining).toLocaleString('pt-BR')} km</b>`}
+     ${nextDate?` · ${dateRemaining>=0?'faltam':'passaram'} <b>${Math.abs(dateRemaining)} dias</b>`:''}
+   </div>`:''}
+   <button class="secondary" style="width:100%;margin-top:8px" onclick="oilForm('${v.id}')">⚙️ Configurar óleo</button>
+ </div>`
+}
+
+function render(){
+ db.vehicles.forEach(v=>{if(v.oilInterval==null)v.oilInterval=10000;if(v.oilMonths==null)v.oilMonths=12;if(v.lastOilKm==null)v.lastOilKm=0;if(v.lastOilDate==null)v.lastOilDate=''});
+ const root=document.getElementById('app');
+ if(!db.vehicles.length){
+   root.innerHTML=`<div class="card empty"><div style="font-size:48px">🚘🏍️</div>
+   <h2>Vamos cadastrar seus veículos</h2><p>Comece adicionando seu carro ou sua moto.</p>
+   <button class="primary" onclick="vehicleForm()">＋ Adicionar veículo</button></div>`;
+   return;
+ }
+ let html=`<button class="primary" onclick="vehicleForm()">＋ Adicionar veículo</button>`;
+ db.vehicles.forEach(v=>{
+   const list=db.maintenance.filter(x=>x.vehicleId===v.id).sort((a,b)=>b.date.localeCompare(a.date));
+   const total=list.reduce((s,x)=>s+Number(x.value||0),0);
+   html+=`<div class="card">
+    <div class="vehicle"><div class="icon">${v.type==='Moto'?'🏍️':'🚗'}</div><div><h2>${esc(v.name)}</h2><div class="muted">${esc(v.brand)} ${esc(v.model)} · ${esc(v.year||'')}</div></div></div>
+    <div class="grid"><div class="stat">Quilometragem<b>${Number(v.km||0).toLocaleString('pt-BR')} km</b></div><div class="stat">Total gasto<b>${money(total)}</b></div></div>
+    ${oilBox(v)}
+    <button class="primary" onclick="maintenanceForm('${v.id}')">＋ Registrar manutenção</button>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid #edf0f3">
+      <div class="muted" style="margin-bottom:5px">Resumo de manutenção</div>
+      <div style="font-size:18px;font-weight:700">💰 ${money(total)}</div>
+      <div class="muted">${list.length} manutenção${list.length===1?'':'ões'} registrada${list.length===1?'':'s'}</div>
+      <button class="secondary" style="width:100%;margin-top:10px" onclick="details('${v.id}')">Ver histórico completo</button>
+    </div>
+   </div>`;
+ });
+ root.innerHTML=html;
+}
+
+function openModal(title,body){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;document.getElementById('modal').classList.add('show')}
+function closeModal(){document.getElementById('modal').classList.remove('show')}
+
+function vehicleForm(){
+ openModal('Adicionar veículo',`
+ <label>Tipo</label><select id="vtype"><option>Carro</option><option>Moto</option></select>
+ <label>Nome/apelido</label><input id="vname" placeholder="Ex.: Meu Virtus">
+ <div class="row"><div><label>Marca</label><input id="vbrand" placeholder="Volkswagen"></div><div><label>Modelo</label><input id="vmodel" placeholder="Virtus"></div></div>
+ <div class="row"><div><label>Ano</label><input id="vyear" type="number" placeholder="2019"></div><div><label>Quilometragem</label><input id="vkm" type="number" placeholder="50000"></div></div>
+ <div class="row"><div><label>Intervalo do óleo (km)</label><input id="voil" type="number" placeholder="10000" value="10000"></div><div><label>Intervalo (meses)</label><input id="voilmonths" type="number" placeholder="12" value="12"></div></div>
+ <div class="row"><div><label>Última troca (km)</label><input id="vlastoil" type="number" placeholder="Ex.: 50000"></div><div><label>Data da última troca</label><input id="vlastoildate" type="date"></div></div>
+ <label>Placa (opcional)</label><input id="vplate" placeholder="ABC1D23">
+ <button class="primary" onclick="addVehicle()">Salvar veículo</button>`);
+}
+function addVehicle(){
+ const name=document.getElementById('vname').value.trim();
+ if(!name){alert('Informe um nome para o veículo.');return}
+ db.vehicles.push({id:crypto.randomUUID(),type:vtype.value,name,brand:vbrand.value,model:vmodel.value,year:vyear.value,km:Number(vkm.value||0),plate:vplate.value,oilInterval:Number(voil.value||10000),oilMonths:Number(voilmonths.value||12),lastOilKm:Number(vlastoil.value||0),lastOilDate:vlastoildate.value||''});
+ save();closeModal();
+}
+function oilForm(id){
+ const v=db.vehicles.find(x=>x.id===id);
+ openModal('Controle de troca de óleo',`
+ <div class="tag">${esc(v.name)}</div>
+ <label>Intervalo entre trocas (km)</label><input id="oilint" type="number" value="${v.oilInterval||10000}">
+ <label>Intervalo por tempo (meses)</label><input id="oilmonths" type="number" value="${v.oilMonths||12}">
+ <div class="row"><div><label>Quilometragem da última troca</label><input id="oillast" type="number" value="${v.lastOilKm||0}"></div><div><label>Data da última troca</label><input id="oillastdate" type="date" value="${v.lastOilDate||''}"></div></div>
+ <div class="card" style="margin-top:14px;background:#f8fafc">
+   <b>Próxima troca:</b>
+   <div style="font-size:19px;margin-top:5px">${(Number(v.lastOilKm||0)+Number(v.oilInterval||10000)).toLocaleString('pt-BR')} km <span style="font-size:14px">ou</span> ${v.lastOilDate?brDate(addMonths(v.lastOilDate,Number(v.oilMonths||12))):'data não definida'}</div>
+   <div class="muted" style="margin-top:5px">O que ocorrer primeiro.</div>
+ </div>
+ <button class="primary" onclick="saveOil('${id}')">Salvar configuração</button>`);
+}
+
+function saveOil(id){
+ const v=db.vehicles.find(x=>x.id===id);
+ v.oilInterval=Number(oilint.value||10000);
+ v.oilMonths=Number(oilmonths.value||12);
+ v.lastOilKm=Number(oillast.value||0);
+ v.lastOilDate=oillastdate.value||'';
+ save();closeModal();
+}
+
+function maintenanceForm(id){
+ const v=db.vehicles.find(x=>x.id===id);
+ openModal('Registrar manutenção',`
+ <div class="tag">${esc(v.name)}</div>
+ <label>Data da manutenção (editável)</label><input id="mdate" type="date" value="${new Date().toISOString().slice(0,10)}">
+ <label>Quilometragem</label><input id="mkm" type="number" value="${v.km||0}">
+ <label>Tipo de serviço</label><select id="mtype"><option>Troca de óleo</option><option>Filtros</option><option>Freios</option><option>Pneus</option><option>Bateria</option><option>Velas</option><option>Suspensão</option><option>Revisão</option><option>Outro</option></select>
+ <label>Descrição</label><input id="mdesc" placeholder="Ex.: óleo + filtro">
+ <div class="row"><div><label>Valor (R$)</label><input id="mvalue" type="number" step="0.01" placeholder="0,00"></div><div><label>Oficina</label><input id="mshop" placeholder="Nome"></div></div>
+ <label>Observações</label><textarea id="mobs" rows="3"></textarea>
+ <button class="primary" onclick="addMaintenance('${id}')">Salvar manutenção</button>`);
+}
+function addMaintenance(id){
+ const km=Number(mkm.value||0);
+ db.maintenance.push({id:crypto.randomUUID(),vehicleId:id,date:mdate.value,km,type:mtype.value,desc:mdesc.value,value:Number(mvalue.value||0),shop:mshop.value,obs:mobs.value});
+ const v=db.vehicles.find(x=>x.id===id);
+ if(v) {
+   v.km=km;
+   if(mtype.value==='Troca de óleo') { v.lastOilKm=km; v.lastOilDate=mdate.value; }
+ }
+ save();closeModal();
+}
+function details(id){
+ const v=db.vehicles.find(x=>x.id===id), list=db.maintenance.filter(x=>x.vehicleId===id).sort((a,b)=>b.date.localeCompare(a.date));
+ const totalGasto=list.reduce((sum,x)=>sum+Number(x.value||0),0);
+ const ultima=list.length?list[0]:null;
+
+ let body=`<div class="card" style="background:#f8fafc">
+   <b>${esc(v.name)}</b>
+   <div class="muted">${Number(v.km||0).toLocaleString('pt-BR')} km · ${esc(v.plate||'Sem placa')}</div>
+ </div>`;
+
+ if(!list.length) {
+   body+=`<div class="empty">Nenhuma manutenção registrada.</div>`;
+ } else {
+   list.forEach(x=>body+=`<div class="history-item">
+     <b>${esc(x.type)}</b> <span class="tag">${brDate(x.date)}</span>
+     <div>${esc(x.desc||'')}</div>
+     <div class="muted">${Number(x.km).toLocaleString('pt-BR')} km${x.shop?' · '+esc(x.shop):''}</div>
+     <div class="amount">${money(x.value)}</div>
+     ${x.obs?`<div class="muted">${esc(x.obs)}</div>`:''}
+     <button class="danger" style="margin-top:8px" onclick="removeMaintenance('${x.id}')">Excluir</button>
+   </div>`);
+ }
+
+ /* Resumo fica deliberadamente NO FINAL do histórico */
+ body+=`<div class="card" style="background:#f8fafc;margin-top:16px;border-top:2px solid #e5e7eb">
+   <div class="muted">RESUMO DO VEÍCULO</div>
+   <div class="grid">
+     <div class="stat">💰 Total gasto<b>${money(totalGasto)}</b></div>
+     <div class="stat">🔧 Total de manutenções<b>${list.length}</b></div>
+   </div>
+   ${ultima?`<div class="muted" style="margin-top:10px">Última manutenção: <b>${brDate(ultima.date)}</b> · ${esc(ultima.type)}</div>`:''}
+ </div>
+ <button class="primary" onclick="maintenanceForm('${id}')">＋ Nova manutenção</button>`;
+
+ openModal('Histórico de manutenção',body);
+}
+function removeMaintenance(id){if(confirm('Excluir este registro?')){db.maintenance=db.maintenance.filter(x=>x.id!==id);save();closeModal()}}
+render();
+</script>
+</body>
+</html>
